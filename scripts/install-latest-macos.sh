@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${WHISPRTYPE_REPO:-batuhankaraman/whisprtype}"
+REPO="${WHISPRTYPE_REPO:-bakaraman/whisprtype}"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 TMP_DIR="$(mktemp -d)"
 ASSET_PATH="${TMP_DIR}/WhisprType.zip"

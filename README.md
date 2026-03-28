@@ -27,7 +27,7 @@ macOS 13 or newer is required.
 ### From source
 
 ```bash
-git clone https://github.com/batuhankaraman/whisprtype.git
+git clone https://github.com/bakaraman/whisprtype.git
 cd whisprtype
 npm install
 npm run tauri dev
