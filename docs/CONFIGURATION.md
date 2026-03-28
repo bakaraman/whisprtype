@@ -28,6 +28,8 @@ WhisprType stores config in:
 - `serverIdleSecondsBattery`
 - `serverIdleSecondsAC`
 
+WhisprType expects runtime binaries and models under its own app-managed directories in `~/Library/Application Support/WhisprType`, not a preinstalled system-level setup.
+
 ### `output`
 
 - `mode`: `immediate`, `clipboard`, `typing`

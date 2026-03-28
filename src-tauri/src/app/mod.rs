@@ -143,8 +143,12 @@ fn config_path() -> Result<PathBuf, String> {
     Ok(app_support_dir()?.join("config.json"))
 }
 
-fn cache_dir() -> Result<PathBuf, String> {
-    Ok(home_dir()?.join(".cache/whisper-cpp"))
+fn runtime_dir() -> Result<PathBuf, String> {
+    Ok(app_support_dir()?.join("runtime/whispercpp"))
+}
+
+fn models_dir() -> Result<PathBuf, String> {
+    Ok(app_support_dir()?.join("models"))
 }
 
 fn default_recordings_dir() -> Result<PathBuf, String> {
@@ -185,6 +189,8 @@ fn default_config() -> Result<AppConfig, String> {
 
 fn ensure_dirs(config: &AppConfig) -> Result<(), String> {
     fs::create_dir_all(app_support_dir()?).map_err(|err| err.to_string())?;
+    fs::create_dir_all(runtime_dir()?).map_err(|err| err.to_string())?;
+    fs::create_dir_all(models_dir()?).map_err(|err| err.to_string())?;
     fs::create_dir_all(PathBuf::from(&config.storage.recordings_dir))
         .map_err(|err| err.to_string())?;
     Ok(())
@@ -209,33 +215,18 @@ fn write_config_file(config: &AppConfig) -> Result<(), String> {
     fs::write(path, json).map_err(|err| err.to_string())
 }
 
-fn run_command(program: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(program).args(args).output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    let text = String::from_utf8(output.stdout).ok()?;
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
-fn which(binary: &str) -> Option<String> {
-    run_command("/usr/bin/which", &[binary])
-}
-
 fn accessibility_permission_state() -> String {
-    match run_command(
-        "/usr/bin/osascript",
-        &[
+    match Command::new("/usr/bin/osascript")
+        .args([
             "-e",
             "tell application \"System Events\" to get UI elements enabled",
-        ],
-    ) {
+        ])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|value| value.trim().to_string())
+    {
         Some(value) if value.to_lowercase().contains("true") => "granted".into(),
         Some(_) => "required".into(),
         None => "unknown".into(),
@@ -252,22 +243,19 @@ fn permissions() -> Vec<PermissionStatus> {
             name: "Microphone".into(),
             state: microphone_permission_state(),
             summary: "Required for local dictation capture.".into(),
-            action: "Open System Settings → Privacy & Security → Microphone and enable WhisprType."
-                .into(),
+            action: "Grant access from the WhisprType onboarding flow on first launch.".into(),
         },
         PermissionStatus {
             name: "Accessibility".into(),
             state: accessibility_permission_state(),
             summary: "Required to paste or type into the active macOS app.".into(),
-            action:
-                "Open System Settings → Privacy & Security → Accessibility and enable WhisprType."
-                    .into(),
+            action: "Grant access from Diagnostics or in System Settings when prompted.".into(),
         },
     ]
 }
 
 fn models() -> Result<Vec<ModelStatus>, String> {
-    let cache = cache_dir()?;
+    let models_dir = models_dir()?;
     let candidates = vec![
         (
             "small",
@@ -289,7 +277,7 @@ fn models() -> Result<Vec<ModelStatus>, String> {
     Ok(candidates
         .into_iter()
         .map(|(id, file, recommended_for)| {
-            let path = cache.join(file);
+            let path = models_dir.join(file);
             ModelStatus {
                 id: id.into(),
                 label: id.into(),
@@ -306,13 +294,14 @@ fn models() -> Result<Vec<ModelStatus>, String> {
 }
 
 fn backend_status() -> Result<BackendStatus, String> {
-    let whisper_server_path = which("whisper-server");
-    let whisper_cli_path = which("whisper-cli");
+    let runtime_dir = runtime_dir()?;
+    let whisper_server_path = runtime_dir.join("whisper-server");
+    let whisper_cli_path = runtime_dir.join("whisper-cli");
     Ok(BackendStatus {
-        backend_ready: whisper_server_path.is_some() && whisper_cli_path.is_some(),
-        whisper_server_path,
-        whisper_cli_path,
-        cache_dir: cache_dir()?.display().to_string(),
+        backend_ready: whisper_server_path.exists() && whisper_cli_path.exists(),
+        whisper_server_path: Some(whisper_server_path.display().to_string()),
+        whisper_cli_path: Some(whisper_cli_path.display().to_string()),
+        cache_dir: models_dir()?.display().to_string(),
         app_support_dir: app_support_dir()?.display().to_string(),
         config_path: config_path()?.display().to_string(),
     })
@@ -386,7 +375,8 @@ pub fn get_bootstrap_state() -> Result<BootstrapState, String> {
             "Use toggle mode if you mostly dictate into editors and chat apps.".into(),
             "Use the bundled Karabiner preset if you want Globe/Fn to act as a dedicated dictation trigger."
                 .into(),
-            "Keep paste-while-recording enabled if you want finished transcripts to land immediately.".into(),
+            "Fresh installs should bootstrap the runtime and then download the model they want from inside the app."
+                .into(),
         ],
         config,
     })

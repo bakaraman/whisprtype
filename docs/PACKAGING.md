@@ -23,6 +23,18 @@ npm run tauri build
 
 `scripts/install-latest-macos.sh` downloads the latest GitHub release asset and installs it under `/Applications`.
 
+## First-run bootstrap
+
+Fresh macOS users should be able to install WhisprType without manually setting up `whisper.cpp` binaries first.
+
+The intended product flow is:
+
+- install the app
+- launch it
+- let WhisprType bootstrap or unpack its runtime assets
+- choose and download a model from inside the app
+- start dictating
+
 ## Release hygiene
 
 - update screenshots

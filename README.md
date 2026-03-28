@@ -2,7 +2,7 @@
 
 WhisprType is a local-first macOS dictation app for people who want a fast global hotkey, local `whisper.cpp` transcription, and text that lands directly in the app they are already using.
 
-It is designed as a serious open source alternative to tools like Wispr Flow and Superwhisper, while staying offline-by-default, hackable, and transparent.
+It is designed as a serious open source macOS dictation product that stays offline-by-default, is easy to install from scratch, and does not assume the user already has a local speech stack configured by hand.
 
 ![WhisprType hero](./assets/hero.svg)
 
@@ -149,9 +149,9 @@ See [config/config.example.json](./config/config.example.json) and [docs/CONFIGU
 - `Text is not pasting`
   - Check Accessibility permission first
 - `Hotkey works but transcription does not start`
-  - Confirm `whisper-server` and `whisper-cli` are available
+  - Open Models & Performance and confirm the runtime bootstrap completed
 - `Model not found`
-  - Download or place the model in `~/.cache/whisper-cpp`
+  - Download the model from the app-managed model flow
 - `Globe/Fn does nothing`
   - Use the bundled Karabiner preset or choose another hotkey
 

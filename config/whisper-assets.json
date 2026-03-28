@@ -1,22 +1,28 @@
 {
   "backend": {
     "engine": "whisper.cpp",
+    "runtimeDir": "~/Library/Application Support/WhisprType/runtime/whispercpp",
     "requiredBinaries": [
       "whisper-server",
       "whisper-cli"
     ],
-    "cacheDir": "~/.cache/whisper-cpp"
+    "source": {
+      "release": "v1.8.4",
+      "archiveUrl": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.4/whisper-v1.8.4-xcframework.zip"
+    }
   },
   "models": [
     {
       "id": "small",
       "file": "ggml-small.bin",
-      "recommendedFor": "fast drafts and command dictation"
+      "recommendedFor": "fast drafts and command dictation",
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
     },
     {
       "id": "large-v3",
       "file": "ggml-large-v3.bin",
-      "recommendedFor": "highest local accuracy"
+      "recommendedFor": "highest local accuracy",
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
     }
   ],
   "source": "https://github.com/ggml-org/whisper.cpp"

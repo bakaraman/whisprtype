@@ -53,16 +53,16 @@ export const mockBootstrapState: BootstrapState = {
     {
       id: "small",
       label: "small",
-      installed: true,
+      installed: false,
       recommendedFor: "Fast drafts and short commands",
-      path: "~/.cache/whisper-cpp/ggml-small.bin",
+      path: null,
     },
     {
       id: "large-v3",
       label: "large-v3",
-      installed: true,
+      installed: false,
       recommendedFor: "Highest accuracy for mixed Turkish and English dictation",
-      path: "~/.cache/whisper-cpp/ggml-large-v3.bin",
+      path: null,
     },
     {
       id: "medium",
@@ -73,10 +73,10 @@ export const mockBootstrapState: BootstrapState = {
     },
   ],
   backend: {
-    whisperServerPath: "/opt/homebrew/bin/whisper-server",
-    whisperCliPath: "/opt/homebrew/bin/whisper-cli",
-    backendReady: true,
-    cacheDir: "~/.cache/whisper-cpp",
+    whisperServerPath: "~/Library/Application Support/WhisprType/runtime/whispercpp/whisper-server",
+    whisperCliPath: "~/Library/Application Support/WhisprType/runtime/whispercpp/whisper-cli",
+    backendReady: false,
+    cacheDir: "~/Library/Application Support/WhisprType/models",
     appSupportDir: "~/Library/Application Support/WhisprType",
     configPath: "~/Library/Application Support/WhisprType/config.json",
   },
@@ -99,6 +99,6 @@ export const mockBootstrapState: BootstrapState = {
   quickTips: [
     "Use toggle mode if you mostly dictate into editors and chat apps.",
     "Map Globe to F18 with the bundled Karabiner preset if you want a dedicated dictation key.",
-    "Keep paste-while-recording enabled if you want finished transcripts to land immediately.",
+    "Fresh installs should bootstrap the runtime and then download the model they actually want.",
   ],
 };
