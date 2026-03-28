@@ -1,0 +1,21 @@
+{
+  "title": "WhisprType Globe to F18",
+  "rules": [
+    {
+      "description": "Map Globe/Fn to F18 for WhisprType",
+      "manipulators": [
+        {
+          "type": "basic",
+          "from": {
+            "apple_vendor_top_case_key_code": "keyboard_fn"
+          },
+          "to": [
+            {
+              "key_code": "f18"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

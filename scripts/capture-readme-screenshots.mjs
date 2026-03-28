@@ -1,0 +1,55 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const root = fileURLToPath(new URL("../", import.meta.url));
+const assetsDir = path.join(root, "assets");
+
+const files = {
+  "hero.svg": {
+    title: "WhisprType",
+    subtitle: "Local-first macOS dictation with hotkeys and whisper.cpp",
+  },
+  "screenshot-control-panel.svg": {
+    title: "Control Panel",
+    subtitle: "Hotkeys, models, permissions, and advanced behavior in one place",
+  },
+  "screenshot-onboarding.svg": {
+    title: "Onboarding",
+    subtitle: "Welcome, choose a hotkey, grant permissions, pick a model, test dictation",
+  },
+};
+
+function svg({ title, subtitle }) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" fill="none">
+  <rect width="1600" height="1000" rx="40" fill="#11131A"/>
+  <rect x="40" y="40" width="1520" height="920" rx="28" fill="url(#panel)" stroke="rgba(255,255,255,0.08)"/>
+  <rect x="80" y="80" width="320" height="840" rx="24" fill="#161A23"/>
+  <rect x="120" y="148" width="240" height="56" rx="18" fill="#2C3344"/>
+  <rect x="120" y="228" width="240" height="56" rx="18" fill="#232938"/>
+  <rect x="120" y="308" width="240" height="56" rx="18" fill="#232938"/>
+  <rect x="440" y="80" width="1080" height="220" rx="28" fill="#1A202B"/>
+  <rect x="440" y="332" width="520" height="240" rx="24" fill="#1A202B"/>
+  <rect x="1000" y="332" width="520" height="240" rx="24" fill="#1A202B"/>
+  <rect x="440" y="604" width="1080" height="280" rx="24" fill="#1A202B"/>
+  <text x="120" y="124" fill="#C7A67D" font-size="22" font-family="Arial, sans-serif" letter-spacing="4">WHISPRTYPE</text>
+  <text x="480" y="150" fill="#F4EFE5" font-size="64" font-family="Arial, sans-serif" font-weight="700">${title}</text>
+  <text x="480" y="210" fill="#D8CCBE" font-size="28" font-family="Arial, sans-serif">${subtitle}</text>
+  <text x="480" y="420" fill="#F4EFE5" font-size="38" font-family="Arial, sans-serif">Queue-safe dictation flow</text>
+  <text x="1040" y="420" fill="#F4EFE5" font-size="38" font-family="Arial, sans-serif">Permission diagnostics</text>
+  <text x="480" y="690" fill="#F4EFE5" font-size="38" font-family="Arial, sans-serif">Settings, models, and transcript history</text>
+  <defs>
+    <linearGradient id="panel" x1="80" y1="40" x2="1520" y2="960" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#171B24"/>
+      <stop offset="1" stop-color="#10131A"/>
+    </linearGradient>
+  </defs>
+</svg>`;
+}
+
+await mkdir(assetsDir, { recursive: true });
+for (const [fileName, meta] of Object.entries(files)) {
+  await writeFile(path.join(assetsDir, fileName), svg(meta));
+}
+
+console.log("Wrote README art assets.");

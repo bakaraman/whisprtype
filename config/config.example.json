@@ -1,0 +1,31 @@
+{
+  "hotkey": {
+    "mode": "toggle",
+    "combo": "Cmd+Shift+Space"
+  },
+  "capture": {
+    "inputDevice": "default",
+    "preRollMs": 350,
+    "postRollMs": 200
+  },
+  "transcription": {
+    "engine": "whispercpp",
+    "model": "large-v3",
+    "language": "auto",
+    "threads": "auto",
+    "serverIdleSecondsBattery": 75,
+    "serverIdleSecondsAC": 300
+  },
+  "output": {
+    "mode": "immediate",
+    "pasteWhileRecording": true
+  },
+  "storage": {
+    "recordingsDir": "~/Documents/WhisprType/Recordings",
+    "keepAudioDays": 14,
+    "keepTranscriptDays": 30
+  },
+  "ui": {
+    "showHud": true
+  }
+}
