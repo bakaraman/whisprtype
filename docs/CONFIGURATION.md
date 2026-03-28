@@ -33,15 +33,12 @@ These fields are used by the backend and exposed in the Settings UI:
 
 - `recordingsDir`: directory for audio and transcript files
 
-## Stored but not yet active
+### `capture`
 
-These fields are saved to the config file but not currently used by the backend:
+- `inputDevice`: `"default"` or a specific device identifier
+- `preRollMs`: pre-buffer before hotkey start (ms)
+- `postRollMs`: trailing capture after stop (ms)
 
-- `capture.inputDevice` -- reserved for future device selection
-- `capture.preRollMs` -- reserved for pre-buffer
-- `capture.postRollMs` -- reserved for post-buffer
-- `transcription.serverIdleSecondsBattery` -- reserved for server idle timeout on battery
-- `transcription.serverIdleSecondsAC` -- reserved for server idle timeout on AC power
-- `storage.keepAudioDays` -- reserved for auto-cleanup of old recordings
-- `storage.keepTranscriptDays` -- reserved for auto-cleanup of old transcripts
-- `ui.showHud` -- reserved for a recording HUD overlay
+### `ui`
+
+- `showHud`: show a compact HUD while recording

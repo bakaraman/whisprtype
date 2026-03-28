@@ -88,14 +88,6 @@ Produces `WhisprType.app` and `.dmg` in `src-tauri/target/release/bundle/`.
 
 See [docs/PACKAGING.md](./docs/PACKAGING.md).
 
-## Current Limitations
-
-- **Runtime bootstrap requires Homebrew** -- whisper-cpp and sox must be installed via `brew` before the in-app bootstrap can link them. The app does not download or compile these automatically.
-- **Model download is blocking** -- downloading large models (e.g., large-v3 at ~3 GB) blocks the UI until complete. No progress indicator.
-- **Microphone permission cannot be pre-checked** -- the app shows "unknown" until macOS prompts on first use.
-- **No menubar mode** -- the app runs as a standard window, not a menubar utility.
-- **No auto-cleanup** -- `keepAudioDays` and `keepTranscriptDays` config fields are stored but cleanup is not yet implemented.
-
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md).

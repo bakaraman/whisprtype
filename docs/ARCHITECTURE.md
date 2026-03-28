@@ -70,12 +70,4 @@ All backend logic lives in `src-tauri/src/app/mod.rs`.
 ### Permission checks
 
 - **Accessibility**: checked via `osascript` (`UI elements enabled`)
-- **Microphone**: cannot be reliably checked from a subprocess; reported as "unknown" until macOS prompts on first use
-
-## Known limitations
-
-- Bootstrap requires whisper-cpp and sox to already be installed (via Homebrew)
-- Model download runs synchronously (no progress reporting)
-- `whisper-server` startup blocks the transcription thread for up to ~6 seconds
-- No idle timeout for the whisper-server process
-- Config fields `capture.inputDevice`, `capture.preRollMs`, `capture.postRollMs`, `ui.showHud`, `storage.keepAudioDays`, `storage.keepTranscriptDays` are persisted but not yet used by the backend
+- **Microphone**: macOS prompts on first recording attempt
