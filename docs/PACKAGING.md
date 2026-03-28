@@ -35,6 +35,12 @@ The intended product flow is:
 - choose and download a model from inside the app
 - start dictating
 
+For source users, the equivalent manual runtime setup script is:
+
+```bash
+./scripts/install-runtime-macos.sh
+```
+
 ## Release hygiene
 
 - update screenshots

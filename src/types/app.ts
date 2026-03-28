@@ -78,6 +78,13 @@ export interface TranscriptEntry {
   sourcePath: string;
 }
 
+export interface DictationStatus {
+  recording: boolean;
+  transcribing: boolean;
+  queueDepth: number;
+  lastError?: string | null;
+}
+
 export interface BootstrapState {
   appName: string;
   version: string;

@@ -1,23 +1,79 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import { JsonPreview } from "./components/JsonPreview";
 import { Sidebar, type AppTab } from "./components/Sidebar";
 import { Timeline } from "./components/Timeline";
-import { getBootstrapState, revealPath, saveConfig } from "./lib/desktop";
-import type { AppConfig, BootstrapState, OutputMode } from "./types/app";
+import {
+  bootstrapRuntime,
+  downloadModel,
+  getBootstrapState,
+  getDictationStatus,
+  onDictationStatus,
+  revealPath,
+  saveConfig,
+  startDictation,
+  stopDictation,
+  toggleDictation,
+} from "./lib/desktop";
+import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
+import type { AppConfig, BootstrapState, DictationStatus, OutputMode } from "./types/app";
 
 function App() {
   const [activeTab, setActiveTab] = useState<AppTab>("quick");
   const [state, setState] = useState<BootstrapState | null>(null);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [saving, setSaving] = useState(false);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [dictationStatus, setDictationStatus] = useState<DictationStatus | null>(null);
 
   useEffect(() => {
     getBootstrapState().then((payload) => {
       setState(payload);
       setConfig(payload.config);
     });
+    getDictationStatus().then(setDictationStatus);
+    let unlisten: (() => void) | undefined;
+    onDictationStatus((payload) => setDictationStatus(payload)).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
   }, []);
+
+  useEffect(() => {
+    if (!config) return;
+
+    const shortcut = config.hotkey.combo
+      .split("Cmd")
+      .join("Command")
+      .split("⌘")
+      .join("Command")
+      .split("Option")
+      .join("Alt");
+
+    const registerShortcut = async () => {
+      await unregisterAll().catch(() => undefined);
+      await register(shortcut, async (event) => {
+        if (event.state === "Pressed") {
+          const status = await toggleDictation();
+          setDictationStatus(status);
+        }
+      });
+    };
+
+    registerShortcut().catch(() => undefined);
+
+    return () => {
+      unregisterAll().catch(() => undefined);
+    };
+  }, [config?.hotkey.combo]);
+
+  const runtimeReady = state?.backend.backendReady ?? false;
+  const modelInstalled = useMemo(
+    () => state?.models.some((model) => model.id === config?.transcription.model && model.installed) ?? false,
+    [config?.transcription.model, state?.models],
+  );
 
   async function persistConfig() {
     if (!config) return;
@@ -39,6 +95,42 @@ function App() {
         mode,
       },
     });
+  }
+
+  async function refreshBootstrap() {
+    const payload = await getBootstrapState();
+    setState(payload);
+    setConfig(payload.config);
+  }
+
+  async function runBootstrap() {
+    setBusyAction("bootstrap");
+    try {
+      const payload = await bootstrapRuntime();
+      setState(payload);
+      setConfig(payload.config);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function runDownload(modelId: string) {
+    setBusyAction(`download:${modelId}`);
+    try {
+      const payload = await downloadModel(modelId);
+      setState(payload);
+      setConfig(payload.config);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleStartStop() {
+    if (dictationStatus?.recording) {
+      setDictationStatus(await stopDictation());
+    } else {
+      setDictationStatus(await startDictation());
+    }
   }
 
   if (!state || !config) {
@@ -88,7 +180,7 @@ function App() {
           </div>
           <div className="metric">
             <span className="metric__label">Backend</span>
-            <strong>{state.backend.backendReady ? "Ready" : "Needs Setup"}</strong>
+            <strong>{runtimeReady ? "Ready" : "Bootstrap Needed"}</strong>
           </div>
           <div className="metric">
             <span className="metric__label">Model</span>
@@ -104,6 +196,36 @@ function App() {
                   <p className="caption">Quick Dictation</p>
                   <h3>Primary flow</h3>
                 </div>
+                <div className="toolbar__actions">
+                  <button className="toolbar-button" onClick={refreshBootstrap} type="button">
+                    Refresh
+                  </button>
+                  <button
+                    className="toolbar-button"
+                    disabled={busyAction === "bootstrap"}
+                    onClick={runBootstrap}
+                    type="button"
+                  >
+                    {busyAction === "bootstrap" ? "Bootstrapping…" : "Bootstrap Runtime"}
+                  </button>
+                  <button
+                    className="toolbar-button is-primary"
+                    disabled={!runtimeReady || !modelInstalled}
+                    onClick={handleStartStop}
+                    type="button"
+                  >
+                    {dictationStatus?.recording ? "Stop Dictation" : "Start Dictation"}
+                  </button>
+                </div>
+              </div>
+              <div className="info-banner">
+                <strong>Status:</strong>{" "}
+                {dictationStatus?.recording
+                  ? "Recording"
+                  : dictationStatus?.transcribing
+                    ? `Transcribing (${dictationStatus.queueDepth})`
+                    : "Idle"}
+                {dictationStatus?.lastError ? <span> · {dictationStatus.lastError}</span> : null}
               </div>
               <div className="step-list">
                 <div className="step-row">
@@ -225,6 +347,14 @@ function App() {
                   <p className="caption">Models & Performance</p>
                   <h3>Backend choices</h3>
                 </div>
+                <button
+                  className="toolbar-button"
+                  disabled={busyAction === `download:${config.transcription.model}`}
+                  onClick={() => runDownload(config.transcription.model)}
+                  type="button"
+                >
+                  {busyAction === `download:${config.transcription.model}` ? "Downloading…" : "Download selected model"}
+                </button>
               </div>
               <div className="plain-list">
                 {state.models.map((model) => (

@@ -1,9 +1,15 @@
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::io::Write;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::process::Stdio;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -117,13 +123,51 @@ pub struct BootstrapState {
     pub quick_tips: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DictationStatus {
+    pub recording: bool,
+    pub transcribing: bool,
+    pub queue_depth: usize,
+    pub last_error: Option<String>,
+}
+
+struct RecordingSession {
+    audio_file: PathBuf,
+    transcript_file: PathBuf,
+    child: std::process::Child,
+}
+
+#[derive(Default)]
+struct WhisperServerProcess {
+    child: Option<std::process::Child>,
+    model_path: Option<String>,
+}
+
+#[derive(Clone, Default)]
+pub struct AppRuntime {
+    recording: Arc<Mutex<Option<RecordingSession>>>,
+    transcription_gate: Arc<Mutex<()>>,
+    transcribing: Arc<AtomicUsize>,
+    server: Arc<Mutex<WhisperServerProcess>>,
+    last_error: Arc<Mutex<Option<String>>>,
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .manage(AppRuntime::default())
         .invoke_handler(tauri::generate_handler![
             get_bootstrap_state,
             load_config,
-            save_config
+            save_config,
+            bootstrap_runtime,
+            download_model,
+            start_dictation,
+            stop_dictation,
+            toggle_dictation,
+            get_dictation_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running WhisprType");
@@ -358,6 +402,334 @@ fn transcript_entries(recordings_dir: &Path) -> Vec<TranscriptEntry> {
     items
 }
 
+fn runtime_binary(name: &str) -> Result<PathBuf, String> {
+    let path = runtime_dir()?.join(name);
+    if path.exists() {
+        Ok(path)
+    } else {
+        Err(format!("Runtime binary not found: {}", path.display()))
+    }
+}
+
+fn find_system_binary(name: &str) -> Result<String, String> {
+    let output = Command::new("/usr/bin/which")
+        .arg(name)
+        .output()
+        .map_err(|err| err.to_string())?;
+    if !output.status.success() {
+        return Err(format!("Could not find {}", name));
+    }
+    let path = String::from_utf8(output.stdout)
+        .map_err(|err| err.to_string())?
+        .trim()
+        .to_string();
+    if path.is_empty() {
+        Err(format!("Could not find {}", name))
+    } else {
+        Ok(path)
+    }
+}
+
+fn shell_escape_single(value: &str) -> String {
+    value.replace('\'', "'\\''")
+}
+
+fn set_last_error(runtime: &AppRuntime, message: Option<String>) {
+    if let Ok(mut slot) = runtime.last_error.lock() {
+        *slot = message;
+    }
+}
+
+fn current_status(runtime: &AppRuntime) -> DictationStatus {
+    let recording = runtime
+        .recording
+        .lock()
+        .ok()
+        .and_then(|session| session.as_ref().map(|_| true))
+        .unwrap_or(false);
+    let queue_depth = runtime.transcribing.load(Ordering::SeqCst);
+    let last_error = runtime
+        .last_error
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone());
+
+    DictationStatus {
+        recording,
+        transcribing: queue_depth > 0,
+        queue_depth,
+        last_error,
+    }
+}
+
+fn emit_status(app: &AppHandle, runtime: &AppRuntime) {
+    let _ = app.emit("dictation-status", current_status(runtime));
+}
+
+fn model_file_name(model: &str) -> Option<&'static str> {
+    match model {
+        "small" => Some("ggml-small.bin"),
+        "medium" => Some("ggml-medium.bin"),
+        "large-v3" => Some("ggml-large-v3.bin"),
+        _ => None,
+    }
+}
+
+fn model_download_url(model: &str) -> Option<&'static str> {
+    match model {
+        "small" => Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"),
+        "medium" => Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"),
+        "large-v3" => Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"),
+        _ => None,
+    }
+}
+
+fn selected_model_path(config: &AppConfig) -> Result<PathBuf, String> {
+    let file = model_file_name(&config.transcription.model)
+        .ok_or_else(|| format!("Unsupported model '{}'", config.transcription.model))?;
+    let path = models_dir()?.join(file);
+    if path.exists() {
+        Ok(path)
+    } else {
+        Err(format!("Model not found at {}", path.display()))
+    }
+}
+
+fn default_threads(config: &AppConfig) -> String {
+    if config.transcription.threads == "auto" {
+        std::thread::available_parallelism()
+            .map(|count| count.get().to_string())
+            .unwrap_or_else(|_| "8".into())
+    } else {
+        config.transcription.threads.clone()
+    }
+}
+
+fn ensure_server(runtime: &AppRuntime, config: &AppConfig, model_path: &Path) -> Result<(), String> {
+    let mut server = runtime.server.lock().map_err(|_| "Failed to lock server state".to_string())?;
+    let desired_model = model_path.display().to_string();
+    let same_model = server.model_path.as_deref() == Some(desired_model.as_str());
+
+    if let Some(child) = server.child.as_mut() {
+        if same_model {
+            match child.try_wait() {
+                Ok(None) => return Ok(()),
+                Ok(Some(_)) | Err(_) => {
+                    server.child = None;
+                    server.model_path = None;
+                }
+            }
+        } else {
+            let _ = child.kill();
+            let _ = child.wait();
+            server.child = None;
+            server.model_path = None;
+        }
+    }
+
+    let server_binary = runtime_binary("whisper-server")?;
+    let child = Command::new(server_binary)
+        .args([
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8177",
+            "--model",
+            desired_model.as_str(),
+            "--language",
+            config.transcription.language.as_str(),
+            "--no-timestamps",
+            "--threads",
+            default_threads(config).as_str(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|err| err.to_string())?;
+
+    server.child = Some(child);
+    server.model_path = Some(desired_model);
+
+    for _ in 0..25 {
+        let status = Command::new("/usr/bin/curl")
+            .args([
+                "-sS",
+                "-o",
+                "/dev/null",
+                "--connect-timeout",
+                "1",
+                "--max-time",
+                "1",
+                "http://127.0.0.1:8177/",
+            ])
+            .status();
+
+        if let Ok(status) = status {
+            if status.success() {
+                return Ok(());
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+
+    Err("whisper-server did not become ready".into())
+}
+
+fn transcribe_with_server(audio_file: &Path) -> Result<String, String> {
+    let output = Command::new("/usr/bin/curl")
+        .args([
+            "-sS",
+            "-f",
+            "--connect-timeout",
+            "1",
+            "--max-time",
+            "600",
+            "-F",
+            &format!("file=@{}", audio_file.display()),
+            "http://127.0.0.1:8177/inference",
+        ])
+        .output()
+        .map_err(|err| err.to_string())?;
+
+    if !output.status.success() {
+        return Err("Server transcription failed".into());
+    }
+
+    let value: Value = serde_json::from_slice(&output.stdout).map_err(|err| err.to_string())?;
+    Ok(value
+        .get("text")
+        .and_then(|text| text.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_string())
+}
+
+fn transcribe_with_cli(config: &AppConfig, model_path: &Path, audio_file: &Path) -> Result<String, String> {
+    let cli_binary = runtime_binary("whisper-cli")?;
+    let output = Command::new(cli_binary)
+        .args([
+            "--model",
+            model_path.to_string_lossy().as_ref(),
+            "--language",
+            config.transcription.language.as_str(),
+            "--no-timestamps",
+            "--no-prints",
+            "--threads",
+            default_threads(config).as_str(),
+            "--file",
+            audio_file.to_string_lossy().as_ref(),
+        ])
+        .output()
+        .map_err(|err| err.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn copy_to_clipboard(text: &str) -> Result<(), String> {
+    let mut child = Command::new("/usr/bin/pbcopy")
+        .stdin(Stdio::piped())
+        .spawn()
+        .map_err(|err| err.to_string())?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin.write_all(text.as_bytes()).map_err(|err| err.to_string())?;
+    }
+    let status = child.wait().map_err(|err| err.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("pbcopy failed".into())
+    }
+}
+
+fn send_paste_shortcut() -> Result<(), String> {
+    let status = Command::new("/usr/bin/osascript")
+        .args([
+            "-e",
+            "tell application \"System Events\" to keystroke \"v\" using command down",
+        ])
+        .status()
+        .map_err(|err| err.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Paste automation failed".into())
+    }
+}
+
+fn type_text_slowly(text: &str) -> Result<(), String> {
+    for (index, line) in text.lines().enumerate() {
+        let escaped = shell_escape_single(line);
+        let script = format!(
+            "tell application \"System Events\" to keystroke '{}'",
+            escaped
+        );
+        let status = Command::new("/usr/bin/osascript")
+            .args(["-e", &script])
+            .status()
+            .map_err(|err| err.to_string())?;
+        if !status.success() {
+            return Err("Typing automation failed".into());
+        }
+
+        if index + 1 < text.lines().count() {
+            let enter = Command::new("/usr/bin/osascript")
+                .args(["-e", "tell application \"System Events\" to key code 36"])
+                .status()
+                .map_err(|err| err.to_string())?;
+            if !enter.success() {
+                return Err("Typing newline failed".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn deliver_text(config: &AppConfig, text: &str) -> Result<(), String> {
+    match config.output.mode.as_str() {
+        "clipboard" => copy_to_clipboard(text),
+        "typing" => type_text_slowly(text),
+        _ => {
+            copy_to_clipboard(text)?;
+            send_paste_shortcut()
+        }
+    }
+}
+
+fn transcribe_and_paste(app: AppHandle, runtime: AppRuntime, audio_file: PathBuf, transcript_file: PathBuf) {
+    runtime.transcribing.fetch_add(1, Ordering::SeqCst);
+    emit_status(&app, &runtime);
+
+    std::thread::spawn(move || {
+        let _guard = runtime.transcription_gate.lock().ok();
+        let result = (|| -> Result<(), String> {
+            let config = read_config_file()?;
+            let model_path = selected_model_path(&config)?;
+            ensure_server(&runtime, &config, &model_path)?;
+
+            let text = transcribe_with_server(&audio_file)
+                .or_else(|_| transcribe_with_cli(&config, &model_path, &audio_file))?;
+
+            fs::write(&transcript_file, &text).map_err(|err| err.to_string())?;
+            if !text.trim().is_empty() {
+                deliver_text(&config, &text)?;
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(_) => set_last_error(&runtime, None),
+            Err(error) => set_last_error(&runtime, Some(error)),
+        }
+
+        runtime.transcribing.fetch_sub(1, Ordering::SeqCst);
+        emit_status(&app, &runtime);
+    });
+}
+
 #[tauri::command]
 pub fn get_bootstrap_state() -> Result<BootstrapState, String> {
     let config = read_config_file()?;
@@ -391,4 +763,141 @@ pub fn load_config() -> Result<AppConfig, String> {
 pub fn save_config(config: AppConfig) -> Result<AppConfig, String> {
     write_config_file(&config)?;
     Ok(config)
+}
+
+#[tauri::command]
+pub fn bootstrap_runtime() -> Result<BootstrapState, String> {
+    let config = read_config_file()?;
+    ensure_dirs(&config)?;
+
+    for binary in ["whisper-server", "whisper-cli", "rec", "sox"] {
+        let source = find_system_binary(binary)?;
+        let target = runtime_dir()?.join(binary);
+        if target.exists() {
+            fs::remove_file(&target).map_err(|err| err.to_string())?;
+        }
+        std::os::unix::fs::symlink(source, target).map_err(|err| err.to_string())?;
+    }
+
+    get_bootstrap_state()
+}
+
+#[tauri::command]
+pub fn download_model(model_id: String) -> Result<BootstrapState, String> {
+    let file_name = model_file_name(&model_id)
+        .ok_or_else(|| format!("Unsupported model '{}'", model_id))?;
+    let download_url = model_download_url(&model_id)
+        .ok_or_else(|| format!("No download URL for model '{}'", model_id))?;
+
+    let destination = models_dir()?.join(file_name);
+    fs::create_dir_all(models_dir()?).map_err(|err| err.to_string())?;
+
+    let status = Command::new("/usr/bin/curl")
+        .args([
+            "-L",
+            "--fail",
+            "--output",
+            destination.to_string_lossy().as_ref(),
+            download_url,
+        ])
+        .status()
+        .map_err(|err| err.to_string())?;
+
+    if !status.success() {
+        return Err(format!("Failed to download model '{}'", model_id));
+    }
+
+    get_bootstrap_state()
+}
+
+#[tauri::command]
+pub fn get_dictation_status(runtime: tauri::State<AppRuntime>) -> Result<DictationStatus, String> {
+    Ok(current_status(runtime.inner()))
+}
+
+#[tauri::command]
+pub fn start_dictation(app: AppHandle, runtime: tauri::State<AppRuntime>) -> Result<DictationStatus, String> {
+    let config = read_config_file()?;
+    let _ = selected_model_path(&config)?;
+    let rec_binary = runtime_binary("rec")?;
+    ensure_dirs(&config)?;
+
+    let mut session_slot = runtime
+        .recording
+        .lock()
+        .map_err(|_| "Failed to lock recording state".to_string())?;
+    if session_slot.is_some() {
+        return Ok(current_status(runtime.inner()));
+    }
+
+    let stamp = Local::now().format("%Y-%m-%d_%H-%M-%S_%3f").to_string();
+    let recordings_dir = PathBuf::from(&config.storage.recordings_dir);
+    let audio_file = recordings_dir.join(format!("{stamp}.wav"));
+    let transcript_file = recordings_dir.join(format!("{stamp}.txt"));
+
+    let child = Command::new(rec_binary)
+        .args([
+            "-q",
+            "--buffer",
+            "256",
+            "-b",
+            "16",
+            "-r",
+            "48000",
+            "-c",
+            "1",
+            audio_file.to_string_lossy().as_ref(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|err| err.to_string())?;
+
+    *session_slot = Some(RecordingSession {
+        audio_file,
+        transcript_file,
+        child,
+    });
+    drop(session_slot);
+
+    set_last_error(runtime.inner(), None);
+    emit_status(&app, runtime.inner());
+    Ok(current_status(runtime.inner()))
+}
+
+#[tauri::command]
+pub fn stop_dictation(app: AppHandle, runtime: tauri::State<AppRuntime>) -> Result<DictationStatus, String> {
+    let session = {
+        let mut slot = runtime
+            .recording
+            .lock()
+            .map_err(|_| "Failed to lock recording state".to_string())?;
+        slot.take()
+    };
+
+    let Some(mut session) = session else {
+        return Ok(current_status(runtime.inner()));
+    };
+
+    let _ = session.child.kill();
+    let _ = session.child.wait();
+
+    transcribe_and_paste(
+        app.clone(),
+        runtime.inner().clone(),
+        session.audio_file,
+        session.transcript_file,
+    );
+
+    emit_status(&app, runtime.inner());
+    Ok(current_status(runtime.inner()))
+}
+
+#[tauri::command]
+pub fn toggle_dictation(app: AppHandle, runtime: tauri::State<AppRuntime>) -> Result<DictationStatus, String> {
+    if current_status(runtime.inner()).recording {
+        stop_dictation(app, runtime)
+    } else {
+        start_dictation(app, runtime)
+    }
 }

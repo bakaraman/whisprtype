@@ -43,7 +43,7 @@ It is designed as a serious open source macOS dictation product that stays offli
 ### Install from a release
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/batuhankaraman/whisprtype/main/scripts/install-latest-macos.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bakaraman/whisprtype/main/scripts/install-latest-macos.sh | bash
 ```
 
 ### Run from source
@@ -54,6 +54,12 @@ cd whisprtype
 ./scripts/bootstrap-macos.sh
 npm install
 npm run tauri dev
+```
+
+If you want to prepare the local runtime explicitly:
+
+```bash
+./scripts/install-runtime-macos.sh
 ```
 
 ## macOS Install

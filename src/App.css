@@ -176,6 +176,12 @@ button {
   padding: 0.48rem 0.8rem;
 }
 
+.toolbar-button:disabled,
+.segmented__item:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .toolbar-button.is-primary,
 .segmented__item.is-active {
   background: #0a84ff;
@@ -236,6 +242,15 @@ button {
 .detail-list {
   display: grid;
   gap: 0.7rem;
+}
+
+.info-banner {
+  margin-bottom: 0.9rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 10px;
+  background: #f7f7fa;
+  border: 1px solid #e5e5ea;
+  color: #3a3a3c;
 }
 
 .step-row,
@@ -433,6 +448,12 @@ button {
   .segmented__item.is-active {
     background: #0a84ff;
     border-color: #0a84ff;
+  }
+
+  .info-banner {
+    background: #2c2c2e;
+    border-color: #3a3a3c;
+    color: #f5f5f7;
   }
 
   .caption,
