@@ -19,9 +19,15 @@
       "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
     },
     {
+      "id": "medium",
+      "file": "ggml-medium.bin",
+      "recommendedFor": "balanced local accuracy",
+      "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
+    },
+    {
       "id": "large-v3",
       "file": "ggml-large-v3.bin",
-      "recommendedFor": "highest local accuracy",
+      "recommendedFor": "highest local accuracy for multilingual dictation",
       "downloadUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
     }
   ],

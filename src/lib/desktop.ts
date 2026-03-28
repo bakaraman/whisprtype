@@ -12,10 +12,6 @@ async function invokeOrMock<T>(command: string, payload?: Record<string, unknown
       return structuredClone(mockBootstrapState) as T;
     }
 
-    if (command === "load_config") {
-      return structuredClone(mockBootstrapState.config) as T;
-    }
-
     if (command === "save_config") {
       return structuredClone((payload?.config as AppConfig) ?? mockBootstrapState.config) as T;
     }
@@ -36,16 +32,16 @@ export async function downloadModel(modelId: string) {
   return invokeOrMock<BootstrapState>("download_model", { modelId });
 }
 
-export async function loadConfig() {
-  return invokeOrMock<AppConfig>("load_config");
-}
-
 export async function saveConfig(config: AppConfig) {
   return invokeOrMock<AppConfig>("save_config", { config });
 }
 
 export async function revealPath(path: string) {
-  await openPath(path);
+  try {
+    await openPath(path);
+  } catch {
+    // Fails outside Tauri runtime
+  }
 }
 
 export async function getDictationStatus() {

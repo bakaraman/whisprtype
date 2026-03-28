@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local};
+use chrono::Local;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Write;
@@ -101,26 +101,13 @@ pub struct BackendStatus {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TranscriptEntry {
-    pub id: String,
-    pub title: String,
-    pub preview: String,
-    pub created_at: String,
-    pub source_path: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct BootstrapState {
     pub app_name: String,
     pub version: String,
-    pub tagline: String,
     pub config: AppConfig,
     pub permissions: Vec<PermissionStatus>,
     pub models: Vec<ModelStatus>,
     pub backend: BackendStatus,
-    pub recent_transcripts: Vec<TranscriptEntry>,
-    pub quick_tips: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -278,7 +265,9 @@ fn accessibility_permission_state() -> String {
 }
 
 fn microphone_permission_state() -> String {
-    "required".into()
+    // No reliable way to check mic permission from a subprocess on macOS.
+    // macOS will prompt on first recording attempt.
+    "unknown".into()
 }
 
 fn permissions() -> Vec<PermissionStatus> {
@@ -287,13 +276,13 @@ fn permissions() -> Vec<PermissionStatus> {
             name: "Microphone".into(),
             state: microphone_permission_state(),
             summary: "Required for local dictation capture.".into(),
-            action: "Grant access from the WhisprType onboarding flow on first launch.".into(),
+            action: "macOS will prompt on first recording attempt.".into(),
         },
         PermissionStatus {
             name: "Accessibility".into(),
             state: accessibility_permission_state(),
             summary: "Required to paste or type into the active macOS app.".into(),
-            action: "Grant access from Diagnostics or in System Settings when prompted.".into(),
+            action: "System Settings > Privacy & Security > Accessibility".into(),
         },
     ]
 }
@@ -351,57 +340,6 @@ fn backend_status() -> Result<BackendStatus, String> {
     })
 }
 
-fn transcript_entries(recordings_dir: &Path) -> Vec<TranscriptEntry> {
-    let mut items = Vec::new();
-    let entries = match fs::read_dir(recordings_dir) {
-        Ok(entries) => entries,
-        Err(_) => return items,
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("txt") {
-            continue;
-        }
-
-        let metadata = match entry.metadata() {
-            Ok(metadata) => metadata,
-            Err(_) => continue,
-        };
-
-        let created_at = metadata
-            .modified()
-            .ok()
-            .map(DateTime::<Local>::from)
-            .map(|time| time.format("%Y-%m-%d %H:%M").to_string())
-            .unwrap_or_else(|| "Unknown".into());
-
-        let body = fs::read_to_string(&path).unwrap_or_default();
-        let preview = body
-            .split_whitespace()
-            .take(18)
-            .collect::<Vec<_>>()
-            .join(" ");
-        let title = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("Transcript")
-            .replace('_', " ");
-
-        items.push(TranscriptEntry {
-            id: path.display().to_string(),
-            title,
-            preview,
-            created_at,
-            source_path: path.display().to_string(),
-        });
-    }
-
-    items.sort_by(|left, right| right.created_at.cmp(&left.created_at));
-    items.truncate(8);
-    items
-}
-
 fn runtime_binary(name: &str) -> Result<PathBuf, String> {
     let path = runtime_dir()?.join(name);
     if path.exists() {
@@ -417,14 +355,20 @@ fn find_system_binary(name: &str) -> Result<String, String> {
         .output()
         .map_err(|err| err.to_string())?;
     if !output.status.success() {
-        return Err(format!("Could not find {}", name));
+        return Err(format!(
+            "'{}' not found on PATH. Install with: brew install whisper-cpp sox",
+            name
+        ));
     }
     let path = String::from_utf8(output.stdout)
         .map_err(|err| err.to_string())?
         .trim()
         .to_string();
     if path.is_empty() {
-        Err(format!("Could not find {}", name))
+        Err(format!(
+            "'{}' not found on PATH. Install with: brew install whisper-cpp sox",
+            name
+        ))
     } else {
         Ok(path)
     }
@@ -738,19 +682,10 @@ pub fn get_bootstrap_state() -> Result<BootstrapState, String> {
     Ok(BootstrapState {
         app_name: "WhisprType".into(),
         version,
-        tagline: "Press a hotkey. Speak. Let local AI type anywhere on macOS.".into(),
+        config,
         permissions: permissions(),
         models: models()?,
         backend: backend_status()?,
-        recent_transcripts: transcript_entries(Path::new(&config.storage.recordings_dir)),
-        quick_tips: vec![
-            "Use toggle mode if you mostly dictate into editors and chat apps.".into(),
-            "Use the bundled Karabiner preset if you want Globe/Fn to act as a dedicated dictation trigger."
-                .into(),
-            "Fresh installs should bootstrap the runtime and then download the model they want from inside the app."
-                .into(),
-        ],
-        config,
     })
 }
 

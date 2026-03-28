@@ -13,14 +13,14 @@ if ! command -v brew >/dev/null 2>&1; then
   exit 1
 fi
 
-for formula in whisper-cpp sox ffmpeg; do
+for formula in whisper-cpp sox; do
   if ! brew list "${formula}" >/dev/null 2>&1; then
     echo "==> Installing ${formula}"
     brew install "${formula}"
   fi
 done
 
-for binary in whisper-server whisper-cli rec sox ffmpeg; do
+for binary in whisper-server whisper-cli rec sox; do
   path="$(command -v "${binary}" || true)"
   if [[ -z "${path}" ]]; then
     echo "Missing binary after install: ${binary}"

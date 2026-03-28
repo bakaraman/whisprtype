@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
-import { JsonPreview } from "./components/JsonPreview";
 import { Sidebar, type AppTab } from "./components/Sidebar";
-import { Timeline } from "./components/Timeline";
 import {
   bootstrapRuntime,
   downloadModel,
@@ -19,7 +17,7 @@ import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
 import type { AppConfig, BootstrapState, DictationStatus, OutputMode } from "./types/app";
 
 function App() {
-  const [activeTab, setActiveTab] = useState<AppTab>("quick");
+  const [activeTab, setActiveTab] = useState<AppTab>("dictation");
   const [state, setState] = useState<BootstrapState | null>(null);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [saving, setSaving] = useState(false);
@@ -47,7 +45,7 @@ function App() {
     const shortcut = config.hotkey.combo
       .split("Cmd")
       .join("Command")
-      .split("⌘")
+      .split("\u2318")
       .join("Command")
       .split("Option")
       .join("Alt");
@@ -71,9 +69,10 @@ function App() {
 
   const runtimeReady = state?.backend.backendReady ?? false;
   const modelInstalled = useMemo(
-    () => state?.models.some((model) => model.id === config?.transcription.model && model.installed) ?? false,
+    () => state?.models.some((m) => m.id === config?.transcription.model && m.installed) ?? false,
     [config?.transcription.model, state?.models],
   );
+  const canDictate = runtimeReady && modelInstalled;
 
   async function persistConfig() {
     if (!config) return;
@@ -84,17 +83,6 @@ function App() {
     } finally {
       setSaving(false);
     }
-  }
-
-  function updateOutputMode(mode: OutputMode) {
-    if (!config) return;
-    setConfig({
-      ...config,
-      output: {
-        ...config.output,
-        mode,
-      },
-    });
   }
 
   async function refreshBootstrap() {
@@ -109,9 +97,12 @@ function App() {
       const payload = await bootstrapRuntime();
       setState(payload);
       setConfig(payload.config);
-    } finally {
+    } catch (err) {
       setBusyAction(null);
+      alert(err instanceof Error ? err.message : String(err));
+      return;
     }
+    setBusyAction(null);
   }
 
   async function runDownload(modelId: string) {
@@ -120,9 +111,12 @@ function App() {
       const payload = await downloadModel(modelId);
       setState(payload);
       setConfig(payload.config);
-    } finally {
+    } catch (err) {
       setBusyAction(null);
+      alert(err instanceof Error ? err.message : String(err));
+      return;
     }
+    setBusyAction(null);
   }
 
   async function handleStartStop() {
@@ -137,151 +131,177 @@ function App() {
     return (
       <main className="loading-view">
         <div className="loading-spinner" />
-        <div>
-          <p className="caption">WhisprType</p>
-          <h1>Loading control panel…</h1>
-        </div>
+        <p>Loading…</p>
       </main>
     );
   }
 
+  const needsSetup =
+    !runtimeReady ||
+    !modelInstalled ||
+    state.permissions.some((p) => p.state === "required");
+
   return (
     <main className="window-shell">
-      <Sidebar activeTab={activeTab} onSelect={setActiveTab} />
+      <Sidebar activeTab={activeTab} onSelect={setActiveTab} version={state.version} />
 
       <section className="content-shell">
-        <header className="toolbar">
-          <div>
-            <p className="caption">macOS dictation</p>
-            <h2>WhisprType</h2>
-          </div>
-
-          <div className="toolbar__actions">
-            <button className="toolbar-button" onClick={() => revealPath(state.backend.configPath)} type="button">
-              Show Config
-            </button>
-            <button className="toolbar-button" onClick={() => revealPath(config.storage.recordingsDir)} type="button">
-              Show Recordings
-            </button>
-            <button className="toolbar-button is-primary" onClick={persistConfig} type="button">
-              {saving ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </header>
-
-        <section className="overview-strip">
-          <div className="metric">
-            <span className="metric__label">Hotkey</span>
-            <strong>{config.hotkey.combo}</strong>
-          </div>
-          <div className="metric">
-            <span className="metric__label">Mode</span>
-            <strong>{config.hotkey.mode === "toggle" ? "Toggle Recording" : "Push to Talk"}</strong>
-          </div>
-          <div className="metric">
-            <span className="metric__label">Backend</span>
-            <strong>{runtimeReady ? "Ready" : "Bootstrap Needed"}</strong>
-          </div>
-          <div className="metric">
-            <span className="metric__label">Model</span>
-            <strong>{config.transcription.model}</strong>
-          </div>
-        </section>
-
-        {activeTab === "quick" ? (
-          <div className="section-stack">
-            <section className="panel panel--plain">
-              <div className="panel__header">
-                <div>
-                  <p className="caption">Quick Dictation</p>
-                  <h3>Primary flow</h3>
-                </div>
-                <div className="toolbar__actions">
-                  <button className="toolbar-button" onClick={refreshBootstrap} type="button">
-                    Refresh
-                  </button>
-                  <button
-                    className="toolbar-button"
-                    disabled={busyAction === "bootstrap"}
-                    onClick={runBootstrap}
-                    type="button"
-                  >
-                    {busyAction === "bootstrap" ? "Bootstrapping…" : "Bootstrap Runtime"}
-                  </button>
-                  <button
-                    className="toolbar-button is-primary"
-                    disabled={!runtimeReady || !modelInstalled}
-                    onClick={handleStartStop}
-                    type="button"
-                  >
-                    {dictationStatus?.recording ? "Stop Dictation" : "Start Dictation"}
-                  </button>
-                </div>
-              </div>
-              <div className="info-banner">
-                <strong>Status:</strong>{" "}
-                {dictationStatus?.recording
-                  ? "Recording"
-                  : dictationStatus?.transcribing
-                    ? `Transcribing (${dictationStatus.queueDepth})`
-                    : "Idle"}
-                {dictationStatus?.lastError ? <span> · {dictationStatus.lastError}</span> : null}
-              </div>
-              <div className="step-list">
-                <div className="step-row">
-                  <span>1</span>
-                  <div>
-                    <strong>Press the hotkey</strong>
-                    <p>Default is {config.hotkey.combo}. Globe/Fn can be mapped to F18 with Karabiner.</p>
-                  </div>
-                </div>
-                <div className="step-row">
-                  <span>2</span>
-                  <div>
-                    <strong>Speak naturally</strong>
-                    <p>WhisprType records locally, uses an app-managed whisper runtime, then queues output.</p>
-                  </div>
-                </div>
-                <div className="step-row">
-                  <span>3</span>
-                  <div>
-                    <strong>Paste when ready</strong>
-                    <p>Finished transcripts can land immediately, even if another recording is still live.</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="panel panel--plain">
-              <div className="panel__header">
-                <div>
-                  <p className="caption">Recent transcripts</p>
-                  <h3>History</h3>
-                </div>
-              </div>
-              <Timeline items={state.recentTranscripts} />
-            </section>
-          </div>
-        ) : null}
-
-        {activeTab === "hotkeys" ? (
+        {activeTab === "dictation" ? (
           <div className="section-stack">
             <section className="panel">
               <div className="panel__header">
-                <div>
-                  <p className="caption">Hotkeys & Behavior</p>
-                  <h3>Input and output</h3>
-                </div>
+                <h3>Dictation</h3>
+                <button
+                  className="toolbar-button is-primary"
+                  disabled={!canDictate}
+                  onClick={handleStartStop}
+                  type="button"
+                >
+                  {dictationStatus?.recording ? "Stop" : "Start"}
+                </button>
               </div>
+
+              <div className="status-row">
+                <span
+                  className={
+                    "status-dot" +
+                    (dictationStatus?.recording
+                      ? " is-recording"
+                      : dictationStatus?.transcribing
+                        ? " is-transcribing"
+                        : "")
+                  }
+                />
+                <span className="status-label">
+                  {dictationStatus?.recording
+                    ? "Recording…"
+                    : dictationStatus?.transcribing
+                      ? `Transcribing (${dictationStatus.queueDepth} in queue)`
+                      : "Idle"}
+                </span>
+              </div>
+
+              {dictationStatus?.lastError && (
+                <p className="status-error">{dictationStatus.lastError}</p>
+              )}
+
+              <p className="hint">
+                Hotkey: <strong>{config.hotkey.combo}</strong>{" "}
+                ({config.hotkey.mode === "toggle" ? "toggle" : "push-to-talk"})
+              </p>
+            </section>
+
+            {needsSetup && (
+              <section className="panel">
+                <div className="panel__header">
+                  <h3>Setup</h3>
+                  <button className="toolbar-button" onClick={refreshBootstrap} type="button">
+                    Refresh
+                  </button>
+                </div>
+
+                <div className="checklist">
+                  <div className="checklist__item">
+                    <span>Runtime</span>
+                    <div className="checklist__right">
+                      {runtimeReady ? (
+                        <span className="badge is-success">Ready</span>
+                      ) : (
+                        <>
+                          <span className="badge is-warning">Not found</span>
+                          <button
+                            className="toolbar-button"
+                            disabled={busyAction === "bootstrap"}
+                            onClick={runBootstrap}
+                            type="button"
+                          >
+                            {busyAction === "bootstrap" ? "Setting up…" : "Bootstrap"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="checklist__item">
+                    <span>Model ({config.transcription.model})</span>
+                    <div className="checklist__right">
+                      {modelInstalled ? (
+                        <span className="badge is-success">Installed</span>
+                      ) : (
+                        <>
+                          <span className="badge is-warning">Not downloaded</span>
+                          <button
+                            className="toolbar-button"
+                            disabled={!!busyAction?.startsWith("download")}
+                            onClick={() => runDownload(config.transcription.model)}
+                            type="button"
+                          >
+                            {busyAction === `download:${config.transcription.model}`
+                              ? "Downloading…"
+                              : "Download"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {state.permissions.map((p) => (
+                    <div className="checklist__item" key={p.name}>
+                      <span>{p.name}</span>
+                      <div className="checklist__right">
+                        <span
+                          className={
+                            p.state === "granted"
+                              ? "badge is-success"
+                              : p.state === "unknown"
+                                ? "badge"
+                                : "badge is-warning"
+                          }
+                        >
+                          {p.state === "granted"
+                            ? "Granted"
+                            : p.state === "unknown"
+                              ? "Check on first use"
+                              : "Required"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {!runtimeReady && (
+                  <p className="hint">
+                    Bootstrap links whisper-server, whisper-cli, rec, and sox from your
+                    PATH. Install prerequisites first:{" "}
+                    <code>brew install whisper-cpp sox</code>
+                  </p>
+                )}
+              </section>
+            )}
+          </div>
+        ) : (
+          <div className="section-stack">
+            <section className="panel">
+              <div className="panel__header">
+                <h3>Settings</h3>
+                <button
+                  className="toolbar-button is-primary"
+                  onClick={persistConfig}
+                  type="button"
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+              </div>
+
               <div className="form-grid">
                 <label className="field">
                   <span>Shortcut</span>
                   <input
                     value={config.hotkey.combo}
-                    onChange={(event) =>
+                    onChange={(e) =>
                       setConfig({
                         ...config,
-                        hotkey: { ...config.hotkey, combo: event.currentTarget.value },
+                        hotkey: { ...config.hotkey, combo: e.currentTarget.value },
                       })
                     }
                   />
@@ -291,14 +311,17 @@ function App() {
                   <span>Hotkey mode</span>
                   <select
                     value={config.hotkey.mode}
-                    onChange={(event) =>
+                    onChange={(e) =>
                       setConfig({
                         ...config,
-                        hotkey: { ...config.hotkey, mode: event.currentTarget.value as AppConfig["hotkey"]["mode"] },
+                        hotkey: {
+                          ...config.hotkey,
+                          mode: e.currentTarget.value as AppConfig["hotkey"]["mode"],
+                        },
                       })
                     }
                   >
-                    <option value="toggle">Toggle Recording</option>
+                    <option value="toggle">Toggle</option>
                     <option value="ptt">Push to Talk</option>
                   </select>
                 </label>
@@ -309,8 +332,14 @@ function App() {
                     {(["immediate", "clipboard", "typing"] as OutputMode[]).map((mode) => (
                       <button
                         key={mode}
-                        className={config.output.mode === mode ? "segmented__item is-active" : "segmented__item"}
-                        onClick={() => updateOutputMode(mode)}
+                        className={
+                          config.output.mode === mode
+                            ? "segmented__item is-active"
+                            : "segmented__item"
+                        }
+                        onClick={() =>
+                          setConfig({ ...config, output: { ...config.output, mode } })
+                        }
                         type="button"
                       >
                         {mode}
@@ -322,66 +351,31 @@ function App() {
                 <label className="checkbox-row field--full">
                   <input
                     checked={config.output.pasteWhileRecording}
-                    onChange={(event) =>
+                    onChange={(e) =>
                       setConfig({
                         ...config,
-                        output: { ...config.output, pasteWhileRecording: event.currentTarget.checked },
+                        output: {
+                          ...config.output,
+                          pasteWhileRecording: e.currentTarget.checked,
+                        },
                       })
                     }
                     type="checkbox"
                   />
-                  <span>Paste finished transcripts immediately, even while another recording is still running.</span>
+                  <span>Paste finished transcripts while another recording is running</span>
                 </label>
-              </div>
-            </section>
 
-            <JsonPreview title="Current behavior config" value={config} />
-          </div>
-        ) : null}
-
-        {activeTab === "models" ? (
-          <div className="section-stack">
-            <section className="panel">
-              <div className="panel__header">
-                <div>
-                  <p className="caption">Models & Performance</p>
-                  <h3>Backend choices</h3>
-                </div>
-                <button
-                  className="toolbar-button"
-                  disabled={busyAction === `download:${config.transcription.model}`}
-                  onClick={() => runDownload(config.transcription.model)}
-                  type="button"
-                >
-                  {busyAction === `download:${config.transcription.model}` ? "Downloading…" : "Download selected model"}
-                </button>
-              </div>
-              <div className="plain-list">
-                {state.models.map((model) => (
-                  <article className="plain-list__row" key={model.id}>
-                    <div>
-                      <strong>{model.label}</strong>
-                      <p>{model.recommendedFor}</p>
-                    </div>
-                    <div className="row-meta">
-                      <span className={model.installed ? "badge is-success" : "badge"}>{model.installed ? "Installed" : "Optional"}</span>
-                      <code>{model.path ?? "Not downloaded yet"}</code>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="panel">
-              <div className="form-grid">
                 <label className="field">
-                  <span>Preferred model</span>
+                  <span>Model</span>
                   <select
                     value={config.transcription.model}
-                    onChange={(event) =>
+                    onChange={(e) =>
                       setConfig({
                         ...config,
-                        transcription: { ...config.transcription, model: event.currentTarget.value },
+                        transcription: {
+                          ...config.transcription,
+                          model: e.currentTarget.value,
+                        },
                       })
                     }
                   >
@@ -395,10 +389,13 @@ function App() {
                   <span>Language</span>
                   <input
                     value={config.transcription.language}
-                    onChange={(event) =>
+                    onChange={(e) =>
                       setConfig({
                         ...config,
-                        transcription: { ...config.transcription, language: event.currentTarget.value },
+                        transcription: {
+                          ...config.transcription,
+                          language: e.currentTarget.value,
+                        },
                       })
                     }
                   />
@@ -408,197 +405,71 @@ function App() {
                   <span>Threads</span>
                   <input
                     value={config.transcription.threads}
-                    onChange={(event) =>
-                      setConfig({
-                        ...config,
-                        transcription: { ...config.transcription, threads: event.currentTarget.value },
-                      })
-                    }
-                  />
-                </label>
-
-                <label className="field">
-                  <span>Idle on Battery</span>
-                  <input
-                    type="number"
-                    value={config.transcription.serverIdleSecondsBattery}
-                    onChange={(event) =>
+                    onChange={(e) =>
                       setConfig({
                         ...config,
                         transcription: {
                           ...config.transcription,
-                          serverIdleSecondsBattery: Number(event.currentTarget.value),
+                          threads: e.currentTarget.value,
                         },
                       })
                     }
                   />
                 </label>
-              </div>
-            </section>
-          </div>
-        ) : null}
-
-        {activeTab === "permissions" ? (
-          <div className="section-stack">
-            <section className="panel">
-              <div className="panel__header">
-                <div>
-                  <p className="caption">Permissions & Diagnostics</p>
-                  <h3>macOS health</h3>
-                </div>
-              </div>
-              <div className="plain-list">
-                {state.permissions.map((permission) => (
-                  <article className="plain-list__row" key={permission.name}>
-                    <div>
-                      <strong>{permission.name}</strong>
-                      <p>{permission.summary}</p>
-                    </div>
-                    <div className="row-meta">
-                      <span className={permission.state === "granted" ? "badge is-success" : "badge is-warning"}>
-                        {permission.state}
-                      </span>
-                      <small>{permission.action}</small>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="panel">
-              <div className="panel__header">
-                <div>
-                  <p className="caption">Backend status</p>
-                  <h3>whisper.cpp paths</h3>
-                </div>
-              </div>
-              <dl className="detail-list">
-                <div>
-                  <dt>whisper-server</dt>
-                  <dd>{state.backend.whisperServerPath ?? "Not bootstrapped yet"}</dd>
-                </div>
-                <div>
-                  <dt>whisper-cli</dt>
-                  <dd>{state.backend.whisperCliPath ?? "Not bootstrapped yet"}</dd>
-                </div>
-                <div>
-                  <dt>Models directory</dt>
-                  <dd>{state.backend.cacheDir}</dd>
-                </div>
-                <div>
-                  <dt>App Support</dt>
-                  <dd>{state.backend.appSupportDir}</dd>
-                </div>
-                <div>
-                  <dt>Bootstrap</dt>
-                  <dd>{state.backend.backendReady ? "Runtime ready" : "Needs first-run runtime download"}</dd>
-                </div>
-              </dl>
-            </section>
-          </div>
-        ) : null}
-
-        {activeTab === "advanced" ? (
-          <div className="section-stack">
-            <section className="panel">
-              <div className="panel__header">
-                <div>
-                  <p className="caption">Advanced</p>
-                  <h3>Capture and storage</h3>
-                </div>
-              </div>
-              <div className="form-grid">
-                <label className="field">
-                  <span>Input device</span>
-                  <input
-                    value={config.capture.inputDevice}
-                    onChange={(event) =>
-                      setConfig({
-                        ...config,
-                        capture: { ...config.capture, inputDevice: event.currentTarget.value },
-                      })
-                    }
-                  />
-                </label>
 
                 <label className="field">
-                  <span>Pre-roll</span>
+                  <span>Recordings directory</span>
                   <input
-                    type="number"
-                    value={config.capture.preRollMs}
-                    onChange={(event) =>
-                      setConfig({
-                        ...config,
-                        capture: { ...config.capture, preRollMs: Number(event.currentTarget.value) },
-                      })
-                    }
-                  />
-                </label>
-
-                <label className="field">
-                  <span>Post-roll</span>
-                  <input
-                    type="number"
-                    value={config.capture.postRollMs}
-                    onChange={(event) =>
-                      setConfig({
-                        ...config,
-                        capture: { ...config.capture, postRollMs: Number(event.currentTarget.value) },
-                      })
-                    }
-                  />
-                </label>
-
-                <label className="field">
-                  <span>Keep audio days</span>
-                  <input
-                    type="number"
-                    value={config.storage.keepAudioDays}
-                    onChange={(event) =>
-                      setConfig({
-                        ...config,
-                        storage: { ...config.storage, keepAudioDays: Number(event.currentTarget.value) },
-                      })
-                    }
-                  />
-                </label>
-
-                <label className="field">
-                  <span>Keep transcript days</span>
-                  <input
-                    type="number"
-                    value={config.storage.keepTranscriptDays}
-                    onChange={(event) =>
+                    value={config.storage.recordingsDir}
+                    onChange={(e) =>
                       setConfig({
                         ...config,
                         storage: {
                           ...config.storage,
-                          keepTranscriptDays: Number(event.currentTarget.value),
+                          recordingsDir: e.currentTarget.value,
                         },
                       })
                     }
                   />
                 </label>
-
-                <label className="checkbox-row field--full">
-                  <input
-                    checked={config.ui.showHud}
-                    onChange={(event) =>
-                      setConfig({
-                        ...config,
-                        ui: { ...config.ui, showHud: event.currentTarget.checked },
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  <span>Show a compact HUD while recording and transcribing.</span>
-                </label>
               </div>
             </section>
 
-            <JsonPreview title="Advanced config" value={config} />
+            <section className="panel">
+              <h3>Paths</h3>
+              <dl className="detail-list">
+                <div>
+                  <dt>Config file</dt>
+                  <dd>
+                    <button
+                      className="link-button"
+                      onClick={() => revealPath(state.backend.configPath)}
+                      type="button"
+                    >
+                      {state.backend.configPath}
+                    </button>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Recordings</dt>
+                  <dd>
+                    <button
+                      className="link-button"
+                      onClick={() => revealPath(config.storage.recordingsDir)}
+                      type="button"
+                    >
+                      {config.storage.recordingsDir}
+                    </button>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Models</dt>
+                  <dd>{state.backend.cacheDir}</dd>
+                </div>
+              </dl>
+            </section>
           </div>
-        ) : null}
+        )}
       </section>
     </main>
   );

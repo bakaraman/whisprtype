@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "WhisprType",
-        "width": 1440,
-        "height": 940,
+        "width": 720,
+        "height": 520,
+        "minWidth": 520,
+        "minHeight": 380,
         "resizable": true,
         "fullscreen": false,
         "hiddenTitle": true,

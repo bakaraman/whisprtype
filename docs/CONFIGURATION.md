@@ -1,46 +1,47 @@
 # Configuration
 
-WhisprType stores config in:
+Config file location:
 
-```text
+```
 ~/Library/Application Support/WhisprType/config.json
 ```
 
-## Fields
+Created with defaults on first launch.
+
+## Active fields
+
+These fields are used by the backend and exposed in the Settings UI:
 
 ### `hotkey`
 
-- `mode`: `toggle` or `ptt`
-- `combo`: global shortcut string
-
-### `capture`
-
-- `inputDevice`: `default` or a device identifier
-- `preRollMs`: pre-buffer before hotkey start
-- `postRollMs`: trailing capture after stop
+- `mode`: `"toggle"` or `"ptt"` (push-to-talk)
+- `combo`: global shortcut string, e.g. `"Cmd+Shift+Space"`
 
 ### `transcription`
 
-- `engine`: currently `whispercpp`
-- `model`: `small`, `medium`, `large-v3`
-- `language`: `auto` or explicit language code
-- `threads`: `auto` or numeric string
-- `serverIdleSecondsBattery`
-- `serverIdleSecondsAC`
-
-WhisprType expects runtime binaries and models under its own app-managed directories in `~/Library/Application Support/WhisprType`, not a preinstalled system-level setup.
+- `engine`: always `"whispercpp"`
+- `model`: `"small"`, `"medium"`, or `"large-v3"`
+- `language`: `"auto"` or an explicit language code
+- `threads`: `"auto"` or a numeric string
 
 ### `output`
 
-- `mode`: `immediate`, `clipboard`, `typing`
-- `pasteWhileRecording`: whether a finished transcript may paste while another recording is live
+- `mode`: `"immediate"` (clipboard + paste), `"clipboard"` (copy only), or `"typing"` (character-by-character)
+- `pasteWhileRecording`: `true` to paste finished transcripts while another recording is running
 
 ### `storage`
 
-- `recordingsDir`
-- `keepAudioDays`
-- `keepTranscriptDays`
+- `recordingsDir`: directory for audio and transcript files
 
-### `ui`
+## Stored but not yet active
 
-- `showHud`
+These fields are saved to the config file but not currently used by the backend:
+
+- `capture.inputDevice` -- reserved for future device selection
+- `capture.preRollMs` -- reserved for pre-buffer
+- `capture.postRollMs` -- reserved for post-buffer
+- `transcription.serverIdleSecondsBattery` -- reserved for server idle timeout on battery
+- `transcription.serverIdleSecondsAC` -- reserved for server idle timeout on AC power
+- `storage.keepAudioDays` -- reserved for auto-cleanup of old recordings
+- `storage.keepTranscriptDays` -- reserved for auto-cleanup of old transcripts
+- `ui.showHud` -- reserved for a recording HUD overlay

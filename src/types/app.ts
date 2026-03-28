@@ -70,14 +70,6 @@ export interface BackendStatus {
   configPath: string;
 }
 
-export interface TranscriptEntry {
-  id: string;
-  title: string;
-  preview: string;
-  createdAt: string;
-  sourcePath: string;
-}
-
 export interface DictationStatus {
   recording: boolean;
   transcribing: boolean;
@@ -88,11 +80,8 @@ export interface DictationStatus {
 export interface BootstrapState {
   appName: string;
   version: string;
-  tagline: string;
   config: AppConfig;
   permissions: PermissionStatus[];
   models: ModelStatus[];
   backend: BackendStatus;
-  recentTranscripts: TranscriptEntry[];
-  quickTips: string[];
 }

@@ -22,7 +22,3 @@ This document records the core technologies used by WhisprType.
 
 - Karabiner-Elements
   - https://karabiner-elements.pqrs.org/
-
-## Note
-
-WhisprType is not affiliated with Wispr Flow.

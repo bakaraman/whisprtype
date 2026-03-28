@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="720" viewBox="0 0 1400 720" fill="none">
-  <rect width="1400" height="720" fill="#10131A"/>
-  <rect x="880" y="120" width="380" height="420" rx="28" fill="#171B24" stroke="rgba(255,255,255,0.08)"/>
-  <text x="920" y="182" fill="#F4EFE5" font-size="36" font-family="Arial, sans-serif" font-weight="700">WhisprType</text>
-  <text x="920" y="228" fill="#D5CABC" font-size="22" font-family="Arial, sans-serif">Ready • Cmd+Shift+Space</text>
-  <rect x="920" y="274" width="300" height="60" rx="18" fill="#212736"/>
-  <rect x="920" y="356" width="300" height="60" rx="18" fill="#212736"/>
-  <rect x="920" y="438" width="300" height="60" rx="18" fill="#212736"/>
-</svg>

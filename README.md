@@ -1,224 +1,113 @@
 # WhisprType
 
-WhisprType is a local-first macOS dictation app for people who want a fast global hotkey, local `whisper.cpp` transcription, and text that lands directly in the app they are already using.
+Local-first macOS dictation. Press a hotkey, speak, and the transcribed text lands in the active app.
 
-It is designed as a serious open source macOS dictation product that stays offline-by-default, is easy to install from scratch, and does not assume the user already has a local speech stack configured by hand.
-
-![WhisprType hero](./assets/hero.svg)
+Uses [whisper.cpp](https://github.com/ggml-org/whisper.cpp) for on-device transcription. No cloud required.
 
 ## What It Does
 
-- Runs as a macOS desktop app with a clean control panel
-- Uses a global hotkey to start and stop dictation
-- Transcribes locally with `whisper.cpp`
-- Pastes finished text into the active app
-- Lets finished transcripts paste immediately, even while another recording is already in progress
-- Supports optional `Globe/Fn -> F18` mapping through a bundled Karabiner preset
+- Global hotkey starts and stops recording
+- Transcribes locally with whisper.cpp
+- Pastes finished text into the active app, copies to clipboard, or types it out
+- Supports toggle and push-to-talk hotkey modes
+- Finished transcripts can paste while another recording is still live
 
-## Demo
+## Prerequisites
 
-![Control panel](./assets/screenshot-control-panel.svg)
+WhisprType requires whisper.cpp and SoX to be installed on the system before the in-app bootstrap can link them.
 
-![Onboarding](./assets/screenshot-onboarding.svg)
+```bash
+brew install whisper-cpp sox
+```
 
-## Why WhisprType
-
-- `Local-first`: no cloud requirement for the core product
-- `Built for real workflows`: hotkeys, queueing, paste-anywhere, permissions diagnostics
-- `macOS-native deployment`: DMG + ZIP release targets
-- `Open source`: documented architecture, visible configs, tweakable scripts
-
-## Features
-
-- Toggle recording and push-to-talk modes
-- Immediate paste, clipboard-only, and slow typing output modes
-- Configurable hotkey and capture behavior
-- Whisper model selection and backend diagnostics
-- Menubar-first workflow with a full control panel
-- Onboarding flow for permissions and first-run setup
-- Optional Karabiner preset for Globe/Fn users
+macOS 13 or newer is required.
 
 ## Quick Start
 
-### Install from a release
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/bakaraman/whisprtype/main/scripts/install-latest-macos.sh | bash
-```
-
-### Run from source
+### From source
 
 ```bash
 git clone https://github.com/batuhankaraman/whisprtype.git
 cd whisprtype
-./scripts/bootstrap-macos.sh
 npm install
 npm run tauri dev
 ```
 
-If you want to prepare the local runtime explicitly:
+Requires Rust toolchain and Node.js 20+. Run `./scripts/bootstrap-macos.sh` to check prerequisites.
 
-```bash
-./scripts/install-runtime-macos.sh
-```
+### First run
 
-## macOS Install
-
-You need:
-
-- macOS 13 or newer
-- Microphone permission
-- Accessibility permission for paste/type automation
-- Rust toolchain for source builds
-- Node.js 20+ for source builds
-
-Prebuilt releases ship as:
-
-- `WhisprType_<version>_aarch64.dmg`
-- `WhisprType_<version>_aarch64.app.tar.gz`
+1. Launch WhisprType
+2. On the Dictation tab, click **Bootstrap** to link runtime binaries
+3. Click **Download** to fetch the selected whisper model
+4. Grant Microphone and Accessibility permissions when macOS prompts
+5. Press the hotkey (default: `Cmd+Shift+Space`) to dictate
 
 ## Permissions
 
 WhisprType needs two macOS permissions:
 
-1. `Microphone`
-2. `Accessibility`
+- **Microphone** -- macOS prompts on first recording attempt
+- **Accessibility** -- required for paste/type automation. Grant in System Settings > Privacy & Security > Accessibility
 
-The app includes a diagnostics page that explains what is missing and where to fix it.
+See [docs/PERMISSIONS.md](./docs/PERMISSIONS.md).
 
-See [docs/PERMISSIONS.md](./docs/PERMISSIONS.md) for the full guide.
+## Hotkeys
 
-## Hotkeys and Globe/Fn
+Default hotkey: `Cmd+Shift+Space`
 
-The default hotkey is:
-
-```text
-Cmd + Shift + Space
-```
-
-If you want a dedicated dictation key on Apple keyboards, use the bundled Karabiner preset:
+If you want Globe/Fn as a dedicated dictation key, use the bundled Karabiner preset to map Globe to F18, then set the hotkey to `F18` in WhisprType settings.
 
 - [extras/karabiner/fn-to-f18.json](./extras/karabiner/fn-to-f18.json)
 
-Then bind `F18` inside WhisprType.
-
-This is optional. WhisprType does not require Karabiner to function.
+Karabiner is optional. WhisprType works with any global shortcut.
 
 ## Configuration
 
-WhisprType stores its config in:
+Config file: `~/Library/Application Support/WhisprType/config.json`
 
-```text
-~/Library/Application Support/WhisprType/config.json
-```
-
-Example config:
-
-```json
-{
-  "hotkey": {
-    "mode": "toggle",
-    "combo": "Cmd+Shift+Space"
-  },
-  "capture": {
-    "inputDevice": "default",
-    "preRollMs": 350,
-    "postRollMs": 200
-  },
-  "transcription": {
-    "engine": "whispercpp",
-    "model": "large-v3",
-    "language": "auto",
-    "threads": "auto",
-    "serverIdleSecondsBattery": 75,
-    "serverIdleSecondsAC": 300
-  },
-  "output": {
-    "mode": "immediate",
-    "pasteWhileRecording": true
-  },
-  "storage": {
-    "recordingsDir": "~/Documents/WhisprType/Recordings",
-    "keepAudioDays": 14,
-    "keepTranscriptDays": 30
-  },
-  "ui": {
-    "showHud": true
-  }
-}
-```
-
-See [config/config.example.json](./config/config.example.json) and [docs/CONFIGURATION.md](./docs/CONFIGURATION.md).
-
-## Troubleshooting
-
-- `Text is not pasting`
-  - Check Accessibility permission first
-- `Hotkey works but transcription does not start`
-  - Open Models & Performance and confirm the runtime bootstrap completed
-- `Model not found`
-  - Download the model from the app-managed model flow
-- `Globe/Fn does nothing`
-  - Use the bundled Karabiner preset or choose another hotkey
+See [docs/CONFIGURATION.md](./docs/CONFIGURATION.md) and [config/config.example.json](./config/config.example.json).
 
 ## Architecture
 
-WhisprType uses:
-
-- `Tauri v2`
-- `React + TypeScript`
-- `Rust backend`
-- `whisper.cpp` for local transcription
-
-Subsystems:
-
-- `capture`
-- `transcription`
-- `automation`
-- `diagnostics`
+- **Tauri v2** -- app shell and native API bridge
+- **React + TypeScript** -- two-tab UI (Dictation, Settings)
+- **Rust backend** -- config persistence, recording, transcription, paste automation
+- **whisper.cpp** -- local speech-to-text via `whisper-server` (with `whisper-cli` fallback)
 
 See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
-## Build From Source
-
-```bash
-./scripts/bootstrap-macos.sh
-npm install
-npm run tauri dev
-```
-
-For production packaging:
+## Build
 
 ```bash
 npm run build
 npm run tauri build
 ```
 
+Produces `WhisprType.app` and `.dmg` in `src-tauri/target/release/bundle/`.
+
+See [docs/PACKAGING.md](./docs/PACKAGING.md).
+
+## Current Limitations
+
+- **Runtime bootstrap requires Homebrew** -- whisper-cpp and sox must be installed via `brew` before the in-app bootstrap can link them. The app does not download or compile these automatically.
+- **Model download is blocking** -- downloading large models (e.g., large-v3 at ~3 GB) blocks the UI until complete. No progress indicator.
+- **Microphone permission cannot be pre-checked** -- the app shows "unknown" until macOS prompts on first use.
+- **No menubar mode** -- the app runs as a standard window, not a menubar utility.
+- **No auto-cleanup** -- `keepAudioDays` and `keepTranscriptDays` config fields are stored but cleanup is not yet implemented.
+
 ## Contributing
 
-Bug reports, packaging fixes, performance tuning, and UI polish are welcome.
-
-Start with:
-
-- [CONTRIBUTING.md](./CONTRIBUTING.md)
-- [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
-- [SECURITY.md](./SECURITY.md)
+See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License
 
-WhisprType is released under the [MIT License](./LICENSE).
+[MIT](./LICENSE)
 
-## Sources and Acknowledgements
+## Acknowledgements
 
-WhisprType is built on top of the following core technologies:
-
-- [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp)
+- [whisper.cpp](https://github.com/ggml-org/whisper.cpp)
 - [Tauri](https://tauri.app/)
 - [React](https://react.dev/)
-- [TypeScript](https://www.typescriptlang.org/)
-- [Vite](https://vite.dev/)
-- [Karabiner-Elements](https://karabiner-elements.pqrs.org/) for the optional Globe/Fn preset
 
-Full notes live in [docs/SOURCES.md](./docs/SOURCES.md).
-
-WhisprType is not affiliated with Wispr Flow.
+Full credits in [docs/SOURCES.md](./docs/SOURCES.md).

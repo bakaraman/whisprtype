@@ -1,9 +1,6 @@
 const tabs = [
-  { id: "quick", label: "Quick Dictation" },
-  { id: "hotkeys", label: "Hotkeys & Behavior" },
-  { id: "models", label: "Models & Performance" },
-  { id: "permissions", label: "Permissions & Diagnostics" },
-  { id: "advanced", label: "Advanced" },
+  { id: "dictation", label: "Dictation" },
+  { id: "settings", label: "Settings" },
 ] as const;
 
 export type AppTab = (typeof tabs)[number]["id"];
@@ -11,17 +8,14 @@ export type AppTab = (typeof tabs)[number]["id"];
 interface SidebarProps {
   activeTab: AppTab;
   onSelect: (tab: AppTab) => void;
+  version: string;
 }
 
-export function Sidebar({ activeTab, onSelect }: SidebarProps) {
+export function Sidebar({ activeTab, onSelect, version }: SidebarProps) {
   return (
     <aside className="sidebar">
       <div className="sidebar__brand">
-        <div className="sidebar__pulse" />
-        <div>
-          <p className="eyebrow">Local-first dictation</p>
-          <h1>WhisprType</h1>
-        </div>
+        <h1>WhisprType</h1>
       </div>
 
       <nav className="sidebar__nav" aria-label="Sections">
@@ -38,7 +32,7 @@ export function Sidebar({ activeTab, onSelect }: SidebarProps) {
       </nav>
 
       <div className="sidebar__footnote">
-        <p>Built for macOS. Offline by default. Whisper.cpp under the hood.</p>
+        <p>v{version}</p>
       </div>
     </aside>
   );
